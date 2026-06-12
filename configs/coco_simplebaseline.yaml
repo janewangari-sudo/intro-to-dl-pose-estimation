@@ -1,0 +1,47 @@
+# Paths are resolved relative to the repository root.
+data:
+  dir: coco
+  download: true
+  input_size: [256, 192]
+  heatmap_size: [64, 48]
+  sigma: 2.0
+  train_fraction: 0.85
+  split_seed: 42
+  min_image_keypoints: 5
+  min_annotation_keypoints: 1
+
+loader:
+  batch_size: 32
+  num_workers: 2
+  pin_memory: true
+
+model:
+  num_joints: 17
+  pretrained: true
+
+training:
+  epochs: 30
+  head_learning_rate: 0.001
+  backbone_learning_rate: 0.0001
+  # Zero-based: 5 unfreezes the backbone before epoch 6.
+  unfreeze_epoch: 5
+  scheduler_step_size: 20
+  scheduler_gamma: 0.1
+
+evaluation:
+  pck_threshold: 0.2
+  visibility_threshold: 0.01
+
+visualization:
+  num_samples: 6
+  seed: 7
+  confidence_threshold: 0.1
+
+output:
+  dir: outputs
+  weights: simplebaseline_weights.pth
+  history: training_history.json
+  loss_curves: loss_curves_simplebaseline.png
+  pck_results: pck_results.json
+  pck_chart: per_joint_pck_simplebaseline.png
+  predictions: predictions_simplebaseline.png
