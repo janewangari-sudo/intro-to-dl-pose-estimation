@@ -767,7 +767,7 @@ python -m compileall src scripts
 
 The project is ready for submission when:
 
-- [ ] Code is organized in `src/` and `scripts/`.
+- [x] Code is organized in `src/` and `scripts/`.
 - [ ] README explains how to run the project.
 - [ ] Dataset paths are documented.
 - [ ] At least one true baseline is implemented.
