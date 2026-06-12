@@ -1,5 +1,6 @@
 __pycache__/
 *.py[cod]
+.ipynb_checkpoints/
 .venv/
 venv/
 
@@ -7,3 +8,6 @@ venv/
 coco/
 outputs/*
 !outputs/.gitkeep
+*.pth
+*.pt
+*.ckpt

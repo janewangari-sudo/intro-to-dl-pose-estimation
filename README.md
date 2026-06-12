@@ -31,8 +31,11 @@ heatmaps, MSE loss, 30 epochs, and backbone unfreezing before epoch 6.
 
 ```bash
 python scripts/evaluate_pck.py --config configs/coco_simplebaseline.yaml
+python scripts/evaluate_trivial_baseline.py --config configs/coco_simplebaseline.yaml
 python scripts/visualize_predictions.py --config configs/coco_simplebaseline.yaml
 ```
 
 Evaluation writes per-joint PCK metrics and a chart to `outputs/`.
+The trivial baseline estimates one average normalized training pose and saves
+its template and PCK results under `outputs/results/`.
 Visualization writes a grid of validation predictions to `outputs/`.
