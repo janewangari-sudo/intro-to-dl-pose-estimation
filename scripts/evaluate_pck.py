@@ -102,6 +102,7 @@ def main() -> None:
 
     mean_pck = float(results["mean_pck"])
     per_joint_pck = np.asarray(results["per_joint_pck"])
+    per_joint_valid_keypoints = np.asarray(results["visible"], dtype=np.int64)
     print(f"SimpleBaseline mean PCK: {mean_pck * 100:.1f}%")
     for joint_name, score in zip(JOINT_NAMES, per_joint_pck):
         if not np.isnan(score):
@@ -110,12 +111,21 @@ def main() -> None:
     metrics_path = output_path(output_dir / output_config["pck_results"])
     chart_path = output_path(output_dir / output_config["pck_chart"])
     serializable_results = {
+        "method": "simplebaseline",
         "mean_pck": mean_pck,
         "per_joint_pck": {
             name: None if np.isnan(score) else float(score)
             for name, score in zip(JOINT_NAMES, per_joint_pck)
         },
-        "threshold": evaluation_config["pck_threshold"],
+        "threshold": float(evaluation_config["pck_threshold"]),
+        "num_valid_keypoints": int(per_joint_valid_keypoints.sum()),
+        "per_joint_valid_keypoints": {
+            name: int(count)
+            for name, count in zip(
+                JOINT_NAMES,
+                per_joint_valid_keypoints,
+            )
+        },
     }
     with metrics_path.open("w", encoding="utf-8") as metrics_file:
         json.dump(serializable_results, metrics_file, indent=2)
