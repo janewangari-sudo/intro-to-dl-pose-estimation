@@ -103,7 +103,7 @@ intro-to-dl-pose-estimation/
 
 ## Task 1.1 – Move notebook code into modules
 
-**Status:** In progress / to be checked
+**Status:** Completed
 
 **Goal:**  
 Refactor reusable notebook code into Python modules.
@@ -719,7 +719,7 @@ Suggested slide outline:
 
 Use this section to track unresolved decisions.
 
-- [ ] Are we using only COCO `val2017`, or also `train2017`?
+- [x] We use only COCO `val2017`, split into training and validation subsets.
 - [ ] Which machine/GPU will run final training?
 - [ ] How many epochs are feasible?
 - [ ] Do we include COCO AP in final results?
@@ -768,13 +768,13 @@ python -m compileall src scripts
 The project is ready for submission when:
 
 - [x] Code is organized in `src/` and `scripts/`.
-- [ ] README explains how to run the project.
-- [ ] Dataset paths are documented.
-- [ ] At least one true baseline is implemented.
-- [ ] SimpleBaseline model can be trained.
-- [ ] PCK evaluation works.
+- [x] README explains how to run the project.
+- [x] Dataset paths are documented.
+- [x] At least one true baseline is implemented.
+- [x] SimpleBaseline model can be trained.
+- [x] PCK evaluation works.
 - [ ] COCO AP evaluation works or its absence is clearly justified.
-- [ ] Qualitative predictions are visualized.
+- [x] Qualitative predictions are visualized.
 - [ ] Report figures are generated.
 - [ ] Final metrics are documented.
 - [ ] Report is complete.
