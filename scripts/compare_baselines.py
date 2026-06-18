@@ -14,16 +14,20 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import matplotlib.pyplot as plt
+import numpy as np
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.config import load_config, output_path, project_path
+from src.visualization.visualize import JOINT_NAMES
 
 
 TRIVIAL_RESULTS_PATH = "outputs/results/trivial_baseline_pck.json"
-COMPARISON_PATH = "outputs/results/baseline_comparison.json"
+COMPARISON_PATH = "outputs/results/pck_comparison.json"
 
 
 class ComparisonError(Exception):
@@ -55,6 +59,16 @@ def parse_args() -> argparse.Namespace:
         "--output",
         default=COMPARISON_PATH,
         help="Comparison JSON path under outputs/.",
+    )
+    parser.add_argument(
+        "--overall-plot",
+        default=None,
+        help="Overall PCK comparison plot path under outputs/.",
+    )
+    parser.add_argument(
+        "--per-joint-plot",
+        default=None,
+        help="Per-joint PCK comparison plot path under outputs/.",
     )
     return parser.parse_args()
 
@@ -215,6 +229,92 @@ def compare_results(
     }
 
 
+def _score_or_nan(value: Any) -> float:
+    """Return a float score, preserving missing values as NaN."""
+    return np.nan if value is None else float(value)
+
+
+def plot_overall_comparison(
+    comparison: dict[str, Any],
+    output_path: Path,
+) -> None:
+    """Save a compact overall PCK bar chart for both methods."""
+    methods = comparison["methods"]
+    names = ["Average-Pose", "SimpleBaseline"]
+    scores = [
+        methods["trivial_average_pose"]["mean_pck"] * 100,
+        methods["simplebaseline"]["mean_pck"] * 100,
+    ]
+    figure, axis = plt.subplots(figsize=(6, 4))
+    bars = axis.bar(names, scores, color=["#6C757D", "#4ECDC4"])
+    axis.set_ylabel("PCK (%)")
+    axis.set_ylim(0, 100)
+    axis.set_title("Overall PCK comparison")
+    axis.grid(axis="y", alpha=0.3)
+    for bar, score in zip(bars, scores):
+        axis.text(
+            bar.get_x() + bar.get_width() / 2,
+            min(score + 2, 98),
+            f"{score:.1f}%",
+            ha="center",
+            va="bottom",
+        )
+    figure.tight_layout()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(output_path, dpi=140, bbox_inches="tight")
+    plt.close(figure)
+
+
+def plot_per_joint_comparison(
+    comparison: dict[str, Any],
+    output_path: Path,
+) -> None:
+    """Save grouped per-joint PCK bars for both methods."""
+    methods = comparison["methods"]
+    trivial_scores = methods["trivial_average_pose"]["per_joint_pck"] or {}
+    simple_scores = methods["simplebaseline"]["per_joint_pck"] or {}
+    joint_names = [
+        name
+        for name in JOINT_NAMES
+        if name in trivial_scores and name in simple_scores
+    ]
+    x_positions = np.arange(len(joint_names))
+    width = 0.38
+    trivial_values = np.array(
+        [_score_or_nan(trivial_scores[name]) * 100 for name in joint_names]
+    )
+    simple_values = np.array(
+        [_score_or_nan(simple_scores[name]) * 100 for name in joint_names]
+    )
+
+    figure, axis = plt.subplots(figsize=(12, 5))
+    axis.bar(
+        x_positions - width / 2,
+        trivial_values,
+        width,
+        label="Average-Pose",
+        color="#6C757D",
+    )
+    axis.bar(
+        x_positions + width / 2,
+        simple_values,
+        width,
+        label="SimpleBaseline",
+        color="#4ECDC4",
+    )
+    axis.set_ylabel("PCK (%)")
+    axis.set_ylim(0, 100)
+    axis.set_title("Per-joint PCK comparison")
+    axis.set_xticks(x_positions)
+    axis.set_xticklabels(joint_names, rotation=45, ha="right")
+    axis.legend()
+    axis.grid(axis="y", alpha=0.3)
+    figure.tight_layout()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(output_path, dpi=140, bbox_inches="tight")
+    plt.close(figure)
+
+
 def run(args: argparse.Namespace) -> Path:
     """Load both evaluations, compare them, and save the result JSON."""
     config = load_config(args.config)
@@ -265,6 +365,20 @@ def run(args: argparse.Namespace) -> Path:
     with comparison_path.open("w", encoding="utf-8") as output_file:
         json.dump(comparison, output_file, indent=2, allow_nan=False)
 
+    figures_dir = output_path(output_config.get("figures_dir", "outputs"))
+    overall_plot_path = output_path(
+        args.overall_plot
+        if args.overall_plot
+        else figures_dir / output_config["pck_comparison_plot"]
+    )
+    per_joint_plot_path = output_path(
+        args.per_joint_plot
+        if args.per_joint_plot
+        else figures_dir / output_config["per_joint_comparison_plot"]
+    )
+    plot_overall_comparison(comparison, overall_plot_path)
+    plot_per_joint_comparison(comparison, per_joint_plot_path)
+
     methods = comparison["methods"]
     difference = comparison["simplebaseline_minus_trivial"]["mean_pck"]
     print(
@@ -281,6 +395,8 @@ def run(args: argparse.Namespace) -> Path:
         f"Valid keypoints: {comparison['num_valid_keypoints']}"
     )
     print(f"Comparison saved to {comparison_path}")
+    print(f"Overall comparison plot saved to {overall_plot_path}")
+    print(f"Per-joint comparison plot saved to {per_joint_plot_path}")
     return comparison_path
 
 

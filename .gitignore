@@ -5,6 +5,7 @@ __pycache__/
 venv/
 
 # Downloaded COCO data and generated experiment artifacts.
+data/
 coco/
 outputs/*
 !outputs/.gitkeep

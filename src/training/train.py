@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from typing import Callable, Dict, List
 
 import torch
@@ -37,6 +38,24 @@ def _fine_tuning_optimizer(
     )
 
 
+def _cuda_grad_scaler(enabled: bool):
+    """Create a GradScaler across torch versions."""
+    try:
+        return torch.amp.GradScaler("cuda", enabled=enabled)
+    except TypeError:
+        return torch.cuda.amp.GradScaler(enabled=enabled)
+
+
+def _autocast(enabled: bool):
+    """Return a CUDA autocast context only when mixed precision is active."""
+    if not enabled:
+        return nullcontext()
+    try:
+        return torch.amp.autocast("cuda", enabled=True)
+    except TypeError:
+        return torch.cuda.amp.autocast(enabled=True)
+
+
 def train_model(
     model: nn.Module,
     train_loader: DataLoader,
@@ -48,6 +67,8 @@ def train_model(
     unfreeze_epoch: int = 5,
     scheduler_step_size: int = 20,
     scheduler_gamma: float = 0.1,
+    mixed_precision: bool = True,
+    channels_last: bool = True,
     log: Callable[[str], None] = print,
 ) -> Dict[str, List[float]]:
     """Train with MSE heatmap loss and the notebook's two-stage strategy.
@@ -55,8 +76,20 @@ def train_model(
     ``unfreeze_epoch`` is zero-based, matching the original loop. The default
     value therefore unfreezes the backbone before the sixth training epoch.
     """
+    device = torch.device(device)
+    cuda_enabled = device.type == "cuda"
+    mixed_precision = bool(mixed_precision) and cuda_enabled
+    memory_format = (
+        torch.channels_last
+        if bool(channels_last) and cuda_enabled
+        else torch.contiguous_format
+    )
+
     model.to(device)
+    if memory_format == torch.channels_last:
+        model.to(memory_format=memory_format)
     criterion = nn.MSELoss()
+    scaler = _cuda_grad_scaler(mixed_precision)
 
     set_backbone_trainable(model, False)
     optimizer = Adam(
@@ -86,22 +119,43 @@ def train_model(
         model.train()
         running_train_loss = 0.0
         for images, target_heatmaps in train_loader:
-            images = images.to(device)
-            target_heatmaps = target_heatmaps.to(device)
+            images = images.to(
+                device,
+                non_blocking=cuda_enabled,
+                memory_format=memory_format,
+            )
+            target_heatmaps = target_heatmaps.to(
+                device,
+                non_blocking=cuda_enabled,
+            )
 
-            optimizer.zero_grad()
-            loss = criterion(model(images), target_heatmaps)
-            loss.backward()
-            optimizer.step()
+            optimizer.zero_grad(set_to_none=True)
+            with _autocast(mixed_precision):
+                loss = criterion(model(images), target_heatmaps)
+            if mixed_precision:
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                loss.backward()
+                optimizer.step()
             running_train_loss += loss.item() * images.size(0)
 
         model.eval()
         running_val_loss = 0.0
         with torch.no_grad():
             for images, target_heatmaps in val_loader:
-                images = images.to(device)
-                target_heatmaps = target_heatmaps.to(device)
-                batch_loss = criterion(model(images), target_heatmaps)
+                images = images.to(
+                    device,
+                    non_blocking=cuda_enabled,
+                    memory_format=memory_format,
+                )
+                target_heatmaps = target_heatmaps.to(
+                    device,
+                    non_blocking=cuda_enabled,
+                )
+                with _autocast(mixed_precision):
+                    batch_loss = criterion(model(images), target_heatmaps)
                 running_val_loss += batch_loss.item() * images.size(0)
 
         train_loss = running_train_loss / len(train_loader.dataset)

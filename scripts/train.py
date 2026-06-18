@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -21,6 +22,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.config import load_config, output_path, project_path
 from src.data.coco_dataset import build_coco_datasets
+from src.device import select_device
 from src.models.simplebaseline import SimpleBaselinePoseNet
 from src.training.train import train_model
 from src.visualization.visualize import plot_training_curves
@@ -43,13 +45,29 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def select_device(device_name: str) -> torch.device:
-    """Resolve the requested device and fail clearly when CUDA is unavailable."""
-    if device_name == "cuda" and not torch.cuda.is_available():
-        raise RuntimeError("CUDA was requested but is not available.")
-    if device_name == "auto":
-        device_name = "cuda" if torch.cuda.is_available() else "cpu"
-    return torch.device(device_name)
+def make_data_loader(
+    dataset,
+    loader_config: dict,
+    device: torch.device,
+    shuffle: bool,
+) -> DataLoader:
+    """Create a DataLoader with GPU-friendly options when available."""
+    num_workers = int(loader_config["num_workers"])
+    loader_kwargs = {
+        "batch_size": loader_config["batch_size"],
+        "shuffle": shuffle,
+        "num_workers": num_workers,
+        "pin_memory": bool(loader_config["pin_memory"])
+        and device.type == "cuda",
+    }
+    if num_workers > 0:
+        loader_kwargs["persistent_workers"] = bool(
+            loader_config.get("persistent_workers", False)
+        )
+        loader_kwargs["prefetch_factor"] = int(
+            loader_config.get("prefetch_factor", 2)
+        )
+    return DataLoader(dataset, **loader_kwargs)
 
 
 def main() -> None:
@@ -65,6 +83,8 @@ def main() -> None:
 
     output_dir = output_path(output_config["dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
+    config_copy_path = output_path(output_dir / output_config["config_copy"])
+    shutil.copy2(project_path(args.config), config_copy_path)
     train_dataset, val_dataset = build_coco_datasets(
         data_dir=project_path(data_config["dir"]),
         input_size=data_config["input_size"],
@@ -76,19 +96,17 @@ def main() -> None:
         min_annotation_keypoints=data_config["min_annotation_keypoints"],
         download=data_config["download"],
     )
-    train_loader = DataLoader(
+    train_loader = make_data_loader(
         train_dataset,
-        batch_size=loader_config["batch_size"],
+        loader_config,
+        device=device,
         shuffle=True,
-        num_workers=loader_config["num_workers"],
-        pin_memory=loader_config["pin_memory"],
     )
-    val_loader = DataLoader(
+    val_loader = make_data_loader(
         val_dataset,
-        batch_size=loader_config["batch_size"],
+        loader_config,
+        device=device,
         shuffle=False,
-        num_workers=loader_config["num_workers"],
-        pin_memory=loader_config["pin_memory"],
     )
 
     model = SimpleBaselinePoseNet(
@@ -110,6 +128,8 @@ def main() -> None:
         unfreeze_epoch=training_config["unfreeze_epoch"],
         scheduler_step_size=training_config["scheduler_step_size"],
         scheduler_gamma=training_config["scheduler_gamma"],
+        mixed_precision=training_config.get("mixed_precision", True),
+        channels_last=training_config.get("channels_last", True),
     )
 
     weights_path = output_path(output_dir / output_config["weights"])
@@ -124,6 +144,7 @@ def main() -> None:
         unfreeze_epoch=training_config["unfreeze_epoch"],
     )
 
+    print(f"Config copied to {config_copy_path}")
     print(f"Weights saved to {weights_path}")
     print(f"Training history saved to {history_path}")
     print(f"Loss curves saved to {curves_path}")

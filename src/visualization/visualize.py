@@ -16,7 +16,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 
 from ..data.transforms import denormalize_image
-from ..evaluation.pck import heatmaps_to_coords
+from ..evaluation.pck import compute_pck, heatmaps_to_coords
 
 
 SKELETON = [
@@ -165,6 +165,68 @@ def draw_predictions(
             )
 
 
+def sample_prediction_pck(
+    predicted_heatmaps: torch.Tensor,
+    target_heatmaps: torch.Tensor,
+    threshold: float = 0.2,
+    visibility_threshold: float = 0.01,
+    heatmap_size: Sequence[int] = (64, 48),
+) -> float:
+    """Compute one sample's mean PCK from predicted and target heatmaps."""
+    num_joints = predicted_heatmaps.shape[0]
+    predicted_coords = heatmaps_to_coords(predicted_heatmaps).numpy()
+    target_coords = heatmaps_to_coords(target_heatmaps).numpy()
+    target_visibility = (
+        target_heatmaps.reshape(num_joints, -1).max(dim=1).values
+        > visibility_threshold
+    ).numpy()
+    correct, visible = compute_pck(
+        predicted_coords,
+        target_coords,
+        target_visibility,
+        threshold=threshold,
+        heatmap_size=heatmap_size,
+    )
+    return float(correct.sum() / visible.sum()) if visible.sum() > 0 else 0.0
+
+
+def _rank_prediction_examples(
+    model: nn.Module,
+    dataset: Dataset,
+    device: torch.device | str,
+    max_candidates: int,
+    seed: int,
+    threshold: float,
+    visibility_threshold: float,
+    heatmap_size: Sequence[int],
+) -> list[tuple[float, int, torch.Tensor, torch.Tensor]]:
+    """Score candidate samples and return them sorted by PCK."""
+    candidate_count = min(max_candidates, len(dataset))
+    candidate_indices = random.Random(seed).sample(
+        range(len(dataset)),
+        candidate_count,
+    )
+    scored_examples = []
+    model.to(device)
+    model.eval()
+    for sample_index in candidate_indices:
+        image, target_heatmaps = dataset[sample_index]
+        with torch.no_grad():
+            predicted_heatmaps = (
+                model(image.unsqueeze(0).to(device)).squeeze(0).cpu()
+            )
+        score = sample_prediction_pck(
+            predicted_heatmaps,
+            target_heatmaps,
+            threshold=threshold,
+            visibility_threshold=visibility_threshold,
+            heatmap_size=heatmap_size,
+        )
+        scored_examples.append((score, sample_index, image, predicted_heatmaps))
+    scored_examples.sort(key=lambda item: item[0], reverse=True)
+    return scored_examples
+
+
 def plot_training_curves(
     history: dict[str, Sequence[float]],
     output_path: str | Path,
@@ -307,4 +369,71 @@ def visualize_predictions(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(output_path, dpi=120, bbox_inches="tight")
+    plt.close(figure)
+
+
+def visualize_ranked_predictions(
+    model: nn.Module,
+    dataset: Dataset,
+    device: torch.device | str,
+    output_path: str | Path,
+    num_samples: int = 6,
+    seed: int = 7,
+    confidence_threshold: float = 0.1,
+    pck_threshold: float = 0.2,
+    visibility_threshold: float = 0.01,
+    heatmap_size: Sequence[int] = (64, 48),
+    max_candidates: int = 64,
+) -> None:
+    """Save high- and low-PCK qualitative prediction examples."""
+    if len(dataset) == 0:
+        raise ValueError("Cannot visualize predictions from an empty dataset.")
+
+    scored_examples = _rank_prediction_examples(
+        model=model,
+        dataset=dataset,
+        device=device,
+        max_candidates=max(max_candidates, num_samples),
+        seed=seed,
+        threshold=pck_threshold,
+        visibility_threshold=visibility_threshold,
+        heatmap_size=heatmap_size,
+    )
+    half = max(1, num_samples // 2)
+    selected = scored_examples[:half] + list(reversed(scored_examples[-half:]))
+    selected = selected[:num_samples]
+
+    columns = min(3, len(selected))
+    rows = math.ceil(len(selected) / columns)
+    figure, axes = plt.subplots(
+        rows,
+        columns,
+        figsize=(5 * columns, 4.8 * rows),
+        squeeze=False,
+    )
+    figure.suptitle(
+        "SimpleBaseline validation examples: high and low PCK",
+        fontsize=14,
+    )
+
+    for axis, (score, _, image, predicted_heatmaps) in zip(
+        axes.flat,
+        selected,
+    ):
+        draw_predictions(
+            axis,
+            image,
+            predicted_heatmaps,
+            confidence_threshold=confidence_threshold,
+        )
+        label = "success" if score >= 0.5 else "failure"
+        axis.set_title(f"{label} | PCK {score * 100:.1f}%", fontsize=10)
+
+    for axis in list(axes.flat)[len(selected) :]:
+        axis.axis("off")
+
+    figure.tight_layout()
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(output_path, dpi=140, bbox_inches="tight")
     plt.close(figure)

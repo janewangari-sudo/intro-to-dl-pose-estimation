@@ -22,7 +22,11 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.config import load_config, output_path, project_path
 from src.data.coco_dataset import COCOPoseDataset, build_coco_datasets
-from src.evaluation.pck import compute_pck, heatmaps_to_coords
+from src.evaluation.pck import (
+    compute_pck,
+    heatmaps_to_coords,
+    summarize_pck_counts,
+)
 from src.models.trivial_baseline import (
     AveragePoseTemplate,
     estimate_average_pose,
@@ -118,10 +122,12 @@ def evaluate_template(
         raise ValueError("No valid validation keypoints available for PCK.")
 
     return {
-        "mean_pck": float(np.nanmean(per_joint_pck)),
+        "mean_pck": float(total_correct.sum() / total_visible.sum()),
         "per_joint_pck": per_joint_pck,
         "num_valid_keypoints": int(total_visible.sum()),
         "per_joint_valid_keypoints": total_visible.astype(np.int64),
+        "correct": total_correct,
+        "visible": total_visible,
     }
 
 
@@ -143,25 +149,15 @@ def make_result_payload(
     template_path: Path,
 ) -> dict[str, Any]:
     """Convert metric arrays into the required report-friendly JSON schema."""
-    per_joint_pck = np.asarray(evaluation["per_joint_pck"])
-    per_joint_counts = np.asarray(
-        evaluation["per_joint_valid_keypoints"]
+    result = summarize_pck_counts(
+        np.asarray(evaluation["correct"]),
+        np.asarray(evaluation["visible"]),
+        threshold=threshold,
+        joint_names=JOINT_NAMES,
+        method="trivial_average_pose",
     )
-    return {
-        "method": "trivial_average_pose",
-        "mean_pck": float(evaluation["mean_pck"]),
-        "per_joint_pck": {
-            name: None if np.isnan(score) else float(score)
-            for name, score in zip(JOINT_NAMES, per_joint_pck)
-        },
-        "threshold": float(threshold),
-        "num_valid_keypoints": int(evaluation["num_valid_keypoints"]),
-        "per_joint_valid_keypoints": {
-            name: int(count)
-            for name, count in zip(JOINT_NAMES, per_joint_counts)
-        },
-        "template_path": relative_project_path(template_path),
-    }
+    result["template_path"] = relative_project_path(template_path)
+    return result
 
 
 def main() -> None:

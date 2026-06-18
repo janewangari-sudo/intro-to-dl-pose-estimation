@@ -23,7 +23,12 @@ Run commands from the repository root:
 python scripts/train.py --config configs/coco_simplebaseline.yaml
 ```
 
-Training saves the model weights, loss history, and loss plot under `outputs/`.
+Use `--device auto` or `--device cuda` to train on a CUDA-capable PyTorch
+installation. The training config enables mixed precision and channels-last
+memory format on CUDA, and keeps CPU training compatible.
+
+Training saves a copy of the config, model weights, loss history, and loss plot
+under `outputs/`.
 The default settings match the notebook: 256x192 person crops, 64x48 target
 heatmaps, MSE loss, 30 epochs, and backbone unfreezing before epoch 6.
 
@@ -57,10 +62,31 @@ python scripts/compare_baselines.py --config configs/coco_simplebaseline.yaml
 ```
 
 The comparison verifies that both results use the same PCK threshold and valid
-keypoint counts, then writes
-`outputs/results/baseline_comparison.json`. Missing result files or a missing
-SimpleBaseline checkpoint are reported with the command and expected path
-needed to continue.
+keypoint counts, then writes:
+
+- `outputs/results/pck_comparison.json`
+- `outputs/figures/pck_comparison.png`
+- `outputs/figures/per_joint_pck.png`
+
+Missing result files or a missing SimpleBaseline checkpoint are reported with
+the command and expected path needed to continue.
+
+Run a small synthetic PCK sanity check:
+
+```bash
+python scripts/check_pck_sanity.py
+```
+
+Evaluate COCO OKS-based keypoint AP:
+
+```bash
+python scripts/evaluate_coco_ap.py --config configs/coco_simplebaseline.yaml
+```
+
+This writes:
+
+- `outputs/results/simplebaseline_coco_results.json`
+- `outputs/results/simplebaseline_coco_ap.json`
 
 ## Visualization
 
@@ -68,4 +94,5 @@ needed to continue.
 python scripts/visualize_predictions.py --config configs/coco_simplebaseline.yaml
 ```
 
-Visualization writes a grid of validation predictions to `outputs/`.
+Visualization selects high- and low-PCK validation examples and writes
+`outputs/figures/prediction_examples.png`.

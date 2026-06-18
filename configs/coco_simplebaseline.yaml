@@ -14,6 +14,8 @@ loader:
   batch_size: 32
   num_workers: 2
   pin_memory: true
+  persistent_workers: true
+  prefetch_factor: 2
 
 model:
   num_joints: 17
@@ -27,6 +29,8 @@ training:
   unfreeze_epoch: 5
   scheduler_step_size: 20
   scheduler_gamma: 0.1
+  mixed_precision: true
+  channels_last: true
 
 evaluation:
   pck_threshold: 0.2
@@ -39,9 +43,17 @@ visualization:
 
 output:
   dir: outputs
+  results_dir: outputs/results
+  figures_dir: outputs/figures
   weights: simplebaseline_weights.pth
+  config_copy: run_config.yaml
   history: training_history.json
   loss_curves: loss_curves_simplebaseline.png
   pck_results: pck_results.json
   pck_chart: per_joint_pck_simplebaseline.png
-  predictions: predictions_simplebaseline.png
+  pck_comparison: pck_comparison.json
+  pck_comparison_plot: pck_comparison.png
+  per_joint_comparison_plot: per_joint_pck.png
+  coco_predictions: simplebaseline_coco_results.json
+  coco_metrics: simplebaseline_coco_ap.json
+  predictions: prediction_examples.png

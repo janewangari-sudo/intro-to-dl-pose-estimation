@@ -1,8 +1,4 @@
-"""Evaluate trained SimpleBaseline weights with PCK.
-
-Run from the repository root:
-    python scripts/evaluate_pck.py --config configs/coco_simplebaseline.yaml
-"""
+"""Evaluate SimpleBaseline with COCO OKS keypoint AP."""
 
 from __future__ import annotations
 
@@ -10,8 +6,6 @@ import argparse
 import json
 import sys
 from pathlib import Path
-
-import numpy as np
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -21,9 +15,11 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.config import load_config, output_path, project_path
 from src.data.coco_dataset import build_coco_datasets
 from src.device import select_device
-from src.evaluation.pck import evaluate_pck, pck_result_to_json
+from src.evaluation.coco_eval import (
+    evaluate_coco_keypoint_ap,
+    predict_coco_keypoints,
+)
 from src.models.simplebaseline import SimpleBaselinePoseNet, load_model_weights
-from src.visualization.visualize import JOINT_NAMES, plot_pck_scores
 
 
 def parse_args() -> argparse.Namespace:
@@ -47,18 +43,17 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
+
 def main() -> None:
-    """Load the validation split, weights, and report per-joint PCK."""
+    """Run COCO AP evaluation for the validation split."""
     args = parse_args()
     config = load_config(args.config)
     data_config = config["data"]
     model_config = config["model"]
-    evaluation_config = config["evaluation"]
+    visualization_config = config["visualization"]
     output_config = config["output"]
     device = select_device(args.device)
 
-    output_dir = output_path(output_config["dir"])
-    output_dir.mkdir(parents=True, exist_ok=True)
     _, val_dataset = build_coco_datasets(
         data_dir=project_path(data_config["dir"]),
         input_size=data_config["input_size"],
@@ -71,6 +66,9 @@ def main() -> None:
         download=data_config["download"],
     )
 
+    output_dir = output_path(output_config["dir"])
+    results_dir = output_path(output_config.get("results_dir", output_dir))
+    results_dir.mkdir(parents=True, exist_ok=True)
     weights_path = (
         project_path(args.weights)
         if args.weights
@@ -81,37 +79,36 @@ def main() -> None:
         pretrained=False,
     ).to(device)
     load_model_weights(model, weights_path, device)
-    results = evaluate_pck(
+
+    predictions = predict_coco_keypoints(
         model=model,
         dataset=val_dataset,
         device=device,
-        threshold=evaluation_config["pck_threshold"],
-        visibility_threshold=evaluation_config["visibility_threshold"],
         heatmap_size=data_config["heatmap_size"],
+        confidence_threshold=visualization_config["confidence_threshold"],
     )
-
-    mean_pck = float(results["mean_pck"])
-    per_joint_pck = np.asarray(results["per_joint_pck"])
-    per_joint_valid_keypoints = np.asarray(results["visible"], dtype=np.int64)
-    print(f"SimpleBaseline mean PCK: {mean_pck * 100:.1f}%")
-    for joint_name, score in zip(JOINT_NAMES, per_joint_pck):
-        if not np.isnan(score):
-            print(f"  {joint_name:<15} {score * 100:5.1f}%")
-
-    metrics_path = output_path(output_dir / output_config["pck_results"])
-    chart_path = output_path(output_dir / output_config["pck_chart"])
-    serializable_results = pck_result_to_json(
-        results,
-        threshold=evaluation_config["pck_threshold"],
-        joint_names=JOINT_NAMES,
-        method="simplebaseline",
+    predictions_path = output_path(results_dir / output_config["coco_predictions"])
+    metrics = evaluate_coco_keypoint_ap(
+        val_dataset.coco,
+        predictions,
+        predictions_path,
     )
+    metrics_path = output_path(results_dir / output_config["coco_metrics"])
+    payload = {
+        "method": "simplebaseline",
+        "iou_type": "keypoints",
+        "prediction_file": str(predictions_path.relative_to(PROJECT_ROOT)),
+        **metrics,
+    }
     with metrics_path.open("w", encoding="utf-8") as metrics_file:
-        json.dump(serializable_results, metrics_file, indent=2)
-    plot_pck_scores(per_joint_pck, mean_pck, chart_path)
+        json.dump(payload, metrics_file, indent=2)
 
-    print(f"PCK results saved to {metrics_path}")
-    print(f"PCK chart saved to {chart_path}")
+    print(
+        "COCO keypoint AP: "
+        + " | ".join(f"{name}: {value:.3f}" for name, value in metrics.items())
+    )
+    print(f"COCO predictions saved to {predictions_path}")
+    print(f"COCO AP metrics saved to {metrics_path}")
 
 
 if __name__ == "__main__":

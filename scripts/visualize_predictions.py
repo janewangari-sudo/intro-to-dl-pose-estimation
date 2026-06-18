@@ -20,8 +20,9 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.config import load_config, output_path, project_path
 from src.data.coco_dataset import build_coco_datasets
+from src.device import select_device
 from src.models.simplebaseline import SimpleBaselinePoseNet, load_model_weights
-from src.visualization.visualize import visualize_predictions
+from src.visualization.visualize import visualize_ranked_predictions
 
 
 def parse_args() -> argparse.Namespace:
@@ -45,22 +46,13 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
-
-def select_device(device_name: str) -> torch.device:
-    """Resolve the requested inference device."""
-    if device_name == "cuda" and not torch.cuda.is_available():
-        raise RuntimeError("CUDA was requested but is not available.")
-    if device_name == "auto":
-        device_name = "cuda" if torch.cuda.is_available() else "cpu"
-    return torch.device(device_name)
-
-
 def main() -> None:
     """Load validation images and save a grid of model predictions."""
     args = parse_args()
     config = load_config(args.config)
     data_config = config["data"]
     model_config = config["model"]
+    evaluation_config = config["evaluation"]
     visualization_config = config["visualization"]
     output_config = config["output"]
     device = select_device(args.device)
@@ -90,8 +82,9 @@ def main() -> None:
     ).to(device)
     load_model_weights(model, weights_path, device)
 
-    figure_path = output_path(output_dir / output_config["predictions"])
-    visualize_predictions(
+    figures_dir = output_path(output_config.get("figures_dir", output_dir))
+    figure_path = output_path(figures_dir / output_config["predictions"])
+    visualize_ranked_predictions(
         model=model,
         dataset=val_dataset,
         device=device,
@@ -101,6 +94,9 @@ def main() -> None:
         confidence_threshold=visualization_config[
             "confidence_threshold"
         ],
+        pck_threshold=evaluation_config["pck_threshold"],
+        visibility_threshold=evaluation_config["visibility_threshold"],
+        heatmap_size=data_config["heatmap_size"],
     )
     print(f"Prediction visualization saved to {figure_path}")
 

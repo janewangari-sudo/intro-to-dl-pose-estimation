@@ -57,6 +57,70 @@ def compute_pck(
     return correct, visible
 
 
+def summarize_pck_counts(
+    total_correct: np.ndarray,
+    total_visible: np.ndarray,
+    threshold: float = 0.2,
+    joint_names: Sequence[str] | None = None,
+    method: str | None = None,
+) -> dict:
+    """Return overall and per-joint PCK as a JSON-serializable dictionary."""
+    total_correct = np.asarray(total_correct, dtype=np.float64)
+    total_visible = np.asarray(total_visible, dtype=np.float64)
+    if total_correct.shape != total_visible.shape:
+        raise ValueError("total_correct and total_visible must match")
+
+    per_joint = np.full(total_correct.shape, np.nan, dtype=np.float64)
+    np.divide(
+        total_correct,
+        total_visible,
+        out=per_joint,
+        where=total_visible > 0,
+    )
+    valid_mask = total_visible > 0
+    mean_pck = (
+        float(total_correct.sum() / total_visible.sum())
+        if np.any(valid_mask)
+        else float("nan")
+    )
+    if joint_names is None:
+        joint_names = [f"joint_{index}" for index in range(len(per_joint))]
+    if len(joint_names) != len(per_joint):
+        raise ValueError("joint_names must match the number of joints")
+
+    result = {
+        "mean_pck": None if np.isnan(mean_pck) else mean_pck,
+        "per_joint_pck": {
+            name: None if np.isnan(score) else float(score)
+            for name, score in zip(joint_names, per_joint)
+        },
+        "threshold": float(threshold),
+        "num_valid_keypoints": int(total_visible.sum()),
+        "per_joint_valid_keypoints": {
+            name: int(count) for name, count in zip(joint_names, total_visible)
+        },
+    }
+    if method is not None:
+        result["method"] = method
+    return result
+
+
+def pck_result_to_json(
+    result: Dict[str, np.ndarray | float],
+    threshold: float = 0.2,
+    joint_names: Sequence[str] | None = None,
+    method: str | None = None,
+) -> dict:
+    """Convert the array-based evaluator output into JSON-safe metrics."""
+    return summarize_pck_counts(
+        np.asarray(result["correct"], dtype=np.float64),
+        np.asarray(result["visible"], dtype=np.float64),
+        threshold=threshold,
+        joint_names=joint_names,
+        method=method,
+    )
+
+
 def evaluate_pck(
     model: nn.Module,
     dataset: Dataset,
@@ -96,16 +160,27 @@ def evaluate_pck(
             total_correct += correct
             total_visible += visible
 
-    per_joint = np.full(num_joints, np.nan, dtype=np.float64)
-    np.divide(
+    json_result = summarize_pck_counts(
         total_correct,
         total_visible,
-        out=per_joint,
-        where=total_visible > 0,
+        threshold=threshold,
+    )
+    per_joint = np.array(
+        [
+            np.nan if score is None else score
+            for score in json_result["per_joint_pck"].values()
+        ],
+        dtype=np.float64,
     )
     return {
-        "mean_pck": float(np.nanmean(per_joint)),
+        "mean_pck": (
+            float("nan")
+            if json_result["mean_pck"] is None
+            else float(json_result["mean_pck"])
+        ),
         "per_joint_pck": per_joint,
         "correct": total_correct,
         "visible": total_visible,
+        "threshold": float(threshold),
+        "num_valid_keypoints": int(total_visible.sum()),
     }
