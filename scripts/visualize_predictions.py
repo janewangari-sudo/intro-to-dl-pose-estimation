@@ -84,6 +84,9 @@ def main() -> None:
 
     figures_dir = output_path(output_config.get("figures_dir", output_dir))
     figure_path = output_path(figures_dir / output_config["predictions"])
+    report_figures_dir = PROJECT_ROOT / "report" / "figures"
+    success_path = report_figures_dir / "success_cases.png"
+    failure_path = report_figures_dir / "failure_cases.png"
     visualize_ranked_predictions(
         model=model,
         dataset=val_dataset,
@@ -97,8 +100,12 @@ def main() -> None:
         pck_threshold=evaluation_config["pck_threshold"],
         visibility_threshold=evaluation_config["visibility_threshold"],
         heatmap_size=data_config["heatmap_size"],
+        success_output_path=success_path,
+        failure_output_path=failure_path,
     )
     print(f"Prediction visualization saved to {figure_path}")
+    print(f"Success cases saved to {success_path}")
+    print(f"Failure cases saved to {failure_path}")
 
 
 if __name__ == "__main__":

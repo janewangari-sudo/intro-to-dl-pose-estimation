@@ -384,8 +384,10 @@ def visualize_ranked_predictions(
     visibility_threshold: float = 0.01,
     heatmap_size: Sequence[int] = (64, 48),
     max_candidates: int = 64,
+    success_output_path: str | Path | None = None,
+    failure_output_path: str | Path | None = None,
 ) -> None:
-    """Save high- and low-PCK qualitative prediction examples."""
+    """Save combined and optional separate high-/low-PCK example grids."""
     if len(dataset) == 0:
         raise ValueError("Cannot visualize predictions from an empty dataset.")
 
@@ -437,3 +439,40 @@ def visualize_ranked_predictions(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(output_path, dpi=140, bbox_inches="tight")
     plt.close(figure)
+
+    separate_outputs = (
+        (success_output_path, scored_examples[:half], "Success cases: high PCK"),
+        (
+            failure_output_path,
+            list(reversed(scored_examples[-half:])),
+            "Failure cases: low PCK",
+        ),
+    )
+    for separate_path, examples, title in separate_outputs:
+        if separate_path is None:
+            continue
+
+        figure, axes = plt.subplots(
+            1,
+            len(examples),
+            figsize=(5 * len(examples), 4.8),
+            squeeze=False,
+        )
+        figure.suptitle(title, fontsize=14)
+        for axis, (score, _, image, predicted_heatmaps) in zip(
+            axes.flat,
+            examples,
+        ):
+            draw_predictions(
+                axis,
+                image,
+                predicted_heatmaps,
+                confidence_threshold=confidence_threshold,
+            )
+            axis.set_title(f"PCK {score * 100:.1f}%", fontsize=10)
+
+        figure.tight_layout()
+        separate_path = Path(separate_path)
+        separate_path.parent.mkdir(parents=True, exist_ok=True)
+        figure.savefig(separate_path, dpi=140, bbox_inches="tight")
+        plt.close(figure)
