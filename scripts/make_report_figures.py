@@ -154,7 +154,7 @@ def _make_loss_figure(
             destination,
             unfreeze_epoch=int(config["training"]["unfreeze_epoch"]),
         )
-    else:
+    elif source_path.resolve() != destination.resolve():
         shutil.copy2(source_path, destination)
 
 

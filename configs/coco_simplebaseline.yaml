@@ -1,7 +1,7 @@
 # Paths are resolved relative to the repository root.
 data:
   dir: coco
-  download: true
+  download: false
   input_size: [256, 192]
   heatmap_size: [64, 48]
   sigma: 2.0
@@ -48,7 +48,7 @@ output:
   weights: simplebaseline_weights.pth
   config_copy: run_config.yaml
   history: training_history.json
-  loss_curves: loss_curves_simplebaseline.png
+  loss_curves: training_loss_curve.png
   pck_results: pck_results.json
   pck_chart: per_joint_pck_simplebaseline.png
   pck_comparison: pck_comparison.json
