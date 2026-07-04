@@ -1,5 +1,5 @@
 # Project 7: Human Pose Estimation
-## 192.151 Introduction to Deep Learning — TU Wien, 2026S
+## 192.151 Introduction to Deep Learning TU Wien, 2026S
 
 **Authors:** Jane Wangari · Lukas Haindl · Yannick Tuerk
 
@@ -19,11 +19,11 @@ All models predict 17 COCO body keypoints (nose, eyes, ears, shoulders, elbows, 
 
 ### Key findings
 
-1. **Training strategy matters more than architecture.** Naive joint training of the backbone and head produced only 16.6% PCK. A freeze-then-finetune strategy — freezing the backbone for 5 epochs before joint fine-tuning with differential learning rates — recovered this to 82.9%. A 66pp improvement from one training decision, larger than any architectural difference.
+1. **Training strategy matters more than architecture.** Naive joint training of the backbone and head produced only 16.6% PCK. A freeze-then-finetune strategy, freezing the backbone for 5 epochs before joint fine tuning with differential learning rates, recovered this to 82.9%. A 66pp improvement from one training decision, larger than any architectural difference.
 
-2. **The trivial baseline reveals joint-level pose variance.** A fixed average-pose template scores 87% on ears but collapses to 39% on wrists — exposing which joints require genuine image understanding versus structural body priors.
+2. **The trivial baseline reveals joint level pose variance.** A fixed average pose template scores 87% on ears but collapses to 39% on wrists, exposing which joints require genuine image understanding versus structural body priors.
 
-3. **SimpleBaseline's advantage is targeted.** Gains are concentrated on high-variance joints (elbows +2.6–5.3pp, wrists), consistent with the architectural reasoning of Xiao et al. (2018).
+3. **SimpleBaseline's advantage is targeted.** Gains are concentrated on high variance joints (elbows +2.6–5.3pp, wrists), consistent with the architectural reasoning of Xiao et al. (2018).
 
 ---
 
@@ -144,9 +144,9 @@ python scripts/evaluate_coco_ap.py --config configs/coco_simplebaseline.yaml
 
 ## Results
 
-### Per-joint PCK
+### Per joint PCK
 
-![Per-joint PCK comparison](report/figures/per_joint_pck.png)
+![Per joint PCK comparison](report/figures/per_joint_pck.png)
 
 ### Predictions
 
@@ -167,7 +167,7 @@ python scripts/evaluate_coco_ap.py --config configs/coco_simplebaseline.yaml
 - Input: 256×192 per-person crops, normalised with ImageNet mean/std
 - Targets: 64×48 Gaussian heatmaps (σ=2)
 
-> **Note:** Due to free-tier Colab compute constraints, we trained on COCO val2017 rather than the full train2017 set (118,000 images). This limits absolute performance compared to published benchmarks but does not affect relative comparisons between models.
+> **Note:** Due to free tier Colab compute constraints, we trained on COCO val2017 rather than the full train2017 set (118,000 images). This limits absolute performance compared to published benchmarks but does not affect relative comparisons between models.
 
 ---
 
